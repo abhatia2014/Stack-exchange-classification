@@ -1,0 +1,112 @@
+---
+title: "Stack Exchange Classification"
+output: html_notebook
+---
+
+load required packages
+
+```{r}
+library(mlr)
+library(dplyr)
+library(tidytext)
+library(ggplot2)
+library(caret)
+```
+
+load input files
+
+```{r}
+getwd()
+fileloc="/Users/aankurbhatia/Documents/Datasets/stack exchange/"
+biology=read.csv(file = paste0(fileloc,"biology.csv"),stringsAsFactors = FALSE)
+cooking=read.csv(file = paste0(fileloc,"cooking.csv"),stringsAsFactors = FALSE)
+crypto=read.csv(file = paste0(fileloc,"crypto.csv"),stringsAsFactors = FALSE)
+diy=read.csv(file = paste0(fileloc,"diy.csv"),stringsAsFactors = FALSE)
+robotics=read.csv(file = paste0(fileloc,"robotics.csv"),stringsAsFactors = FALSE)
+travel=read.csv(file = paste0(fileloc,"travel.csv"),stringsAsFactors = FALSE)
+```
+
+remove id varibles from all datasets and rbind all datasets into one training dataset
+
+```{r}
+biology$id=NULL
+cooking$id=NULL
+crypto$id=NULL
+diy$id=NULL
+robotics$id=NULL
+travel$id=NULL
+
+train=rbind(biology,cooking,crypto,diy,robotics,travel)
+test=read.csv(file = paste0(fileloc,"test.csv"),stringsAsFactors = FALSE)
+submission=read.csv(file = paste0(fileloc,"sample_submission.csv"),stringsAsFactors = FALSE)
+rm(biology,cooking,crypto,diy,robotics,travel)
+```
+
+We use the unnest token function from tidy text to separate words out from the text. In this first attempt, we'll remove the column content and try and predict the tags only from the title 
+
+```{r}
+train_unnest=train %>% 
+  unnest_tokens(output = tags,input =tags )
+
+train_unnest$content=NULL
+
+```
+
+we do another unnest this time on the title
+
+```{r}
+full_unnest=train_unnest %>% 
+  unnest_tokens(output=title,input=title)
+```
+
+2.89 Million entries - we will now remove all stopwords from the full_unnest dataset using antijoin function of dplyr
+
+```{r}
+?anti_join
+full_unnest=full_unnest[,c(2,1)]
+data("stop_words")
+head(stop_words)
+head(stop_words,runif(1,min=1,max=nrow(stop_words)))
+tidy_unnest=full_unnest %>% 
+  mutate(linenumber=row.names(.))
+tidy_unnest= tidy_unnest %>% 
+  rename(word=title) %>% 
+  anti_join(stop_words,by="word") %>% 
+  arrange(linenumber)
+tidy_unnest$linenumber=NULL
+tidy_unnest=tidy_unnest %>% 
+  rename(title=word)
+tidy_unnest=tidy_unnest %>% 
+  group_by(tags)
+```
+
+Train the model using mlr ksvm package
+
+```{r}
+library(mlr)
+tidy_unnest=as.data.frame(tidy_unnest)
+tidy_unnest$tags=factor(tidy_unnest$tags)
+tidy_unnest$title=as.factor(tidy_unnest$title)
+tidy_task=makeClassifTask(data = tidy_unnest,target = "tags")
+alllearners=listLearners(tidy_task)
+```
+
+We'll use ksvm for building the model
+
+```{r}
+#first select a small sample to get the hyperparameters
+train_sample=sample(x=nrow(tidy_unnest),size=10000,replace = FALSE)
+tune_sample=tidy_unnest[train_sample,]
+tune_task=makeClassifTask(data=tune_sample,target = "tags")
+tune_learner=makeLearner("classif.ksvm")
+getParamSet(tune_learner)
+tune_search=makeParamSet(
+  makeNumericParam("C",lower=-10,upper=10,trafo = function(x) 10^x),
+  makeNumericParam("sigma",lower=-10,upper=10,trafo = function(x) 10^x)
+)
+tune_control=makeTuneControlRandom(maxit=100)
+tune_sampling=makeResampleDesc("CV",iters=5)
+tune_Resamples=tuneParams(learner = tune_learner,task = tune_task,resampling = tune_sampling,measures = mmce,par.set = tune_search,control = tune_control)
+test_model=resample(learner = tune_learner,task = tidy_task,resampling = tune_sampling,measures = mmce,keep.pred = TRUE)
+```
+
