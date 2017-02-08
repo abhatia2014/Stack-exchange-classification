@@ -17,7 +17,7 @@ load input files
 
 ```{r}
 getwd()
-fileloc="/Users/aankurbhatia/Documents/Datasets/stack exchange/"
+fileloc="/Users/aankurbhatia/Documents/Datasets/stack exchange/Stack-exchange-classification/"
 biology=read.csv(file = paste0(fileloc,"biology.csv"),stringsAsFactors = FALSE)
 cooking=read.csv(file = paste0(fileloc,"cooking.csv"),stringsAsFactors = FALSE)
 crypto=read.csv(file = paste0(fileloc,"crypto.csv"),stringsAsFactors = FALSE)
@@ -40,6 +40,7 @@ train=rbind(biology,cooking,crypto,diy,robotics,travel)
 test=read.csv(file = paste0(fileloc,"test.csv"),stringsAsFactors = FALSE)
 submission=read.csv(file = paste0(fileloc,"sample_submission.csv"),stringsAsFactors = FALSE)
 rm(biology,cooking,crypto,diy,robotics,travel)
+save.image("currentState.RData")
 ```
 
 We use the unnest token function from tidy text to separate words out from the text. In this first attempt, we'll remove the column content and try and predict the tags only from the title 
