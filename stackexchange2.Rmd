@@ -1,0 +1,112 @@
+---
+title: "Stack Exchange Classification2"
+output: html_notebook
+---
+
+load required packages
+
+```{r}
+
+library(dplyr)
+library(tidytext)
+library(ggplot2)
+library(RTextTools)
+library(caret)
+
+```
+
+load input files
+
+```{r}
+getwd()
+#fileloc="/Users/aankurbhatia/Documents/Datasets/stack exchange/Stack-exchange-classification/"
+biology=read.csv(file = "biology.csv",stringsAsFactors = FALSE)
+cooking=read.csv(file = "cooking.csv",stringsAsFactors = FALSE)
+crypto=read.csv(file = "crypto.csv",stringsAsFactors = FALSE)
+diy=read.csv(file = "diy.csv",stringsAsFactors = FALSE)
+robotics=read.csv(file ="robotics.csv",stringsAsFactors = FALSE)
+travel=read.csv(file = "travel.csv",stringsAsFactors = FALSE)
+```
+
+remove id varibles from all datasets and rbind all datasets into one training dataset
+
+```{r}
+
+biology$id=NULL
+cooking$id=NULL
+crypto$id=NULL
+diy$id=NULL
+robotics$id=NULL
+travel$id=NULL
+
+train=rbind(biology,cooking,crypto,diy,robotics,travel)
+test=read.csv(file = "test.csv",stringsAsFactors = FALSE)
+submission=read.csv(file ="sample_submission.csv",stringsAsFactors = FALSE)
+rm(biology,cooking,crypto,diy,robotics,travel)
+```
+
+Let's remove the content from both train and test datasets. also, we remove the ID from test dataset and store it as a separate variable. 
+
+Also we create a vector source (corpus) of the title for train set
+
+```{r}
+train_content=train$content
+train$content=NULL
+testID=test$id
+test_content=test$content
+test$id=NULL
+test$content=NULL
+
+library(tm)
+source1=VectorSource(train$title[1:30000])
+source2=VectorSource(train$title[30001:60000])
+source3=VectorSource(train$title[60001:87000])
+corpus1=Corpus(source1)
+corpus2=Corpus(source2)
+corpus3=Corpus(source3)
+```
+
+clean the corpus using the tm_map commands
+
+```{r}
+corpus1=tm_map(corpus1,content_transformer(tolower))
+corpus2=tm_map(corpus2,content_transformer(tolower))
+corpus3=tm_map(corpus3,content_transformer(tolower))
+#corpus=tm_map(corpus,removeNumbers) # we do not remove numbers
+corpus1=tm_map(corpus1,removePunctuation)
+corpus2=tm_map(corpus2,removePunctuation)
+corpus3=tm_map(corpus3,removePunctuation)
+corpus1=tm_map(corpus1,stripWhitespace)
+corpus2=tm_map(corpus2,stripWhitespace)
+corpus3=tm_map(corpus3,stripWhitespace)
+corpus1=tm_map(corpus1,removeWords,stopwords('english'))
+corpus2=tm_map(corpus2,removeWords,stopwords('english'))
+corpus3=tm_map(corpus3,removeWords,stopwords('english'))
+
+
+```
+
+convert to DocumentTerm Matrix- then convert to term matrix , inverse term frequency
+
+```{r}
+mat1=DocumentTermMatrix(corpus1)
+mat2=DocumentTermMatrix(corpus2)
+mat3=DocumentTermMatrix(corpus3)
+inspect(mat1[1:2,1000:1005])
+matwt1=weightTfIdf(mat1)
+matwt2=weightTfIdf(mat2)
+matwt3=weightTfIdf(mat3)
+inspect(matwt1[1:4,1500:1510])
+matmat1=as.matrix(matwt1)
+matmat2=as.matrix(matwt2)
+matmat3=as.matrix(matwt3)
+```
+
+Build 3 separate models using matmat, later combine the matrices to build one models
+
+```{r}
+container1=create_container(matmat1,train$tags[1:30000],trainSize = 1:15000,testSize = 15001:30000,virgin = FALSE)
+model=train_model(container1,'SVM',kernel = 'linear')
+```
+
+
